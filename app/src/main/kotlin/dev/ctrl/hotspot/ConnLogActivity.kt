@@ -4,7 +4,10 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.text.TextUtils
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
@@ -31,7 +34,7 @@ import java.util.Date
 import java.util.Locale
 
 class ConnLogActivity : Activity() {
-    private class Row(val id: Long, val line1: String, val line2: String, val open: Boolean)
+    private class Row(val id: Long, val title: String, val sub: String, val up: String, val down: String, val open: Boolean)
 
     private val handler = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
@@ -50,6 +53,39 @@ class ConnLogActivity : Activity() {
     private val devices = ArrayList<String>().apply { add("Todos los dispositivos") }
     private lateinit var devAdapter: ArrayAdapter<String>
 
+    private fun dp(v: Int) = Ui.dp(this, v)
+
+    private fun label(parent: ViewGroup?, text: String?): TextView =
+        TextView(this).apply {
+            this.text = text; textSize = 14f; setTextColor(Ui.TEXT); setBackgroundColor(Ui.SURFACE_HI)
+            setPadding(dp(14), dp(10), dp(14), dp(10)); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+        }
+
+    private inner class RowHolder(val root: LinearLayout) {
+        val dot = TextView(this@ConnLogActivity).apply { text = "●"; textSize = 10f; setTextColor(Ui.GREEN); setPadding(0, 0, dp(8), 0) }
+        val title = TextView(this@ConnLogActivity).apply {
+            textSize = 15f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE
+        }
+        val sub = TextView(this@ConnLogActivity).apply { textSize = 12f; setTextColor(Ui.MUTED); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val up = TextView(this@ConnLogActivity).apply { textSize = 12f; setTextColor(Ui.GREEN); gravity = Gravity.END }
+        val down = TextView(this@ConnLogActivity).apply { textSize = 12f; setTextColor(Ui.ACCENT); gravity = Gravity.END }
+
+        init {
+            root.orientation = LinearLayout.HORIZONTAL
+            root.gravity = Gravity.CENTER_VERTICAL
+            root.background = Ui.rounded(this@ConnLogActivity, Ui.SURFACE, 12)
+            root.setPadding(dp(14), dp(10), dp(14), dp(10))
+            root.addView(dot)
+            val texts = LinearLayout(root.context).apply { orientation = LinearLayout.VERTICAL }
+            texts.addView(title); texts.addView(sub)
+            root.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+            val stats = LinearLayout(root.context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
+            stats.addView(up); stats.addView(down)
+            root.addView(stats)
+        }
+    }
+
     private val rowAdapter = object : BaseAdapter() {
         override fun getCount() = rows.size
         override fun getItem(position: Int) = rows[position]
@@ -57,38 +93,42 @@ class ConnLogActivity : Activity() {
         override fun hasStableIds() = true
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val r = rows[position]
-            val l = (convertView as? LinearLayout) ?: LinearLayout(this@ConnLogActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(24, 12, 24, 12)
-                addView(TextView(context).apply { textSize = 14f; typeface = Typeface.DEFAULT_BOLD })
-                addView(TextView(context).apply { textSize = 12f })
-            }
-            (l.getChildAt(0) as TextView).text = r.line1
-            (l.getChildAt(1) as TextView).text = r.line2
-            l.setBackgroundColor(if (r.open) Color.argb(40, 0, 200, 0) else Color.TRANSPARENT)
-            return l
+            val h = (convertView?.tag as? RowHolder) ?: RowHolder(LinearLayout(this@ConnLogActivity)).also { it.root.tag = it }
+            h.dot.visibility = if (r.open) View.VISIBLE else View.GONE
+            h.title.text = r.title
+            h.sub.text = r.sub
+            h.up.text = r.up
+            h.down.text = r.down
+            return h.root
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Registro de conexiones"
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 0) }
+        val body = buildScreen("Registro de conexiones", scroll = false)
 
         search = EditText(this).apply {
             hint = "Buscar host / IP / puerto"; isSingleLine = true
+            styleInput()
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { refresh() }
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             })
         }
-        root.addView(search)
+        body.addView(search, LinearLayout.LayoutParams(-1, -2))
 
-        devAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, devices)
-        devAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        devAdapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, devices) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+                label(parent, getItem(position)).apply { background = null }
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View =
+                label(parent, getItem(position))
+        }
         spinner = Spinner(this).apply {
             adapter = devAdapter
+            background = Ui.rounded(this@ConnLogActivity, Ui.SURFACE_HI, 12)
+            setPopupBackgroundDrawable(Ui.rounded(this@ConnLogActivity, Ui.SURFACE_HI, 12))
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                     val n = if (pos == 0) null else devices.getOrNull(pos)
@@ -97,33 +137,42 @@ class ConnLogActivity : Activity() {
                 override fun onNothingSelected(p: AdapterView<*>?) {}
             }
         }
-        onlyOpen = CheckBox(this).apply { text = "Solo abiertas"; setOnCheckedChangeListener { _, _ -> refresh() } }
-        root.addView(LinearLayout(this).apply {
+        onlyOpen = CheckBox(this).apply {
+            text = "Solo abiertas"; textSize = 14f; setTextColor(Ui.TEXT)
+            buttonTintList = ColorStateList.valueOf(Ui.ACCENT)
+            setOnCheckedChangeListener { _, _ -> refresh() }
+        }
+        body.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(spinner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(onlyOpen)
-        })
+            addView(spinner, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(onlyOpen, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(12) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
         fun btn(t: String, f: (Button) -> Unit) = Button(this).apply {
-            text = t; textSize = 12f; setOnClickListener { f(this) }
+            text = t; styleSmall(); setOnClickListener { f(this) }
         }
         val bar = LinearLayout(this)
-        fun lp() = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        fun lp(first: Boolean = false) = LinearLayout.LayoutParams(0, -2, 1f).apply { if (!first) leftMargin = dp(8) }
         bar.addView(btn("Top dominios") { b ->
             grouped = !grouped
             b.text = if (grouped) "Ver registro" else "Top dominios"
             refresh()
-        }, lp())
+        }, lp(true))
         bar.addView(btn("CSV") { exportCsv() }, lp())
         bar.addView(btn("Copiar") { copyCsv() }, lp())
         bar.addView(btn("Limpiar") { StatsStore.clear(); refresh() }, lp())
-        root.addView(bar)
+        body.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
-        summary = TextView(this).apply { textSize = 12f; setPadding(8, 4, 8, 4) }
-        root.addView(summary)
-        list = ListView(this).apply { adapter = rowAdapter }
-        root.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(root)
+        summary = TextView(this).apply { textSize = 12f; setTextColor(Ui.MUTED); setPadding(dp(4), dp(10), dp(4), dp(8)) }
+        body.addView(summary)
+        list = ListView(this).apply {
+            adapter = rowAdapter
+            divider = ColorDrawable(Color.TRANSPARENT); dividerHeight = dp(8)
+            selector = ColorDrawable(Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT); cacheColorHint = Color.TRANSPARENT
+            isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        body.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
     override fun onResume() { super.onResume(); handler.post(tick) }
@@ -161,17 +210,16 @@ class ConnLogActivity : Activity() {
                 Triple(h, cs.size, cs.sumOf { it.up.get() } to cs.sumOf { it.down.get() })
             }.sortedByDescending { it.third.first + it.third.second }.take(200).forEachIndexed { i, t ->
                 rows.add(Row(-(i + 1L), "${i + 1}. ${t.first}",
-                    "${t.second} conex. | total ${fmt(t.third.first + t.third.second)} (↑${fmt(t.third.first)} ↓${fmt(t.third.second)})",
-                    false))
+                    "${t.second} conex. · total ${fmt(t.third.first + t.third.second)}",
+                    "↑ ${fmt(t.third.first)}", "↓ ${fmt(t.third.second)}", false))
             }
         } else {
             for (c in conns) {
                 val open = c.endMs == 0L
                 val dur = fmtDur((if (open) now else c.endMs) - c.startMs)
-                rows.add(Row(c.id,
-                    (if (open) "● " else "") + "${c.host}:${c.port}",
-                    "${hf.format(Date(c.startMs))} | ${c.clientIp} | $dur | ↑${fmt(c.up.get())} ↓${fmt(c.down.get())}",
-                    open))
+                rows.add(Row(c.id, "${c.host}:${c.port}",
+                    "${hf.format(Date(c.startMs))} · ${c.clientIp} · $dur",
+                    "↑ ${fmt(c.up.get())}", "↓ ${fmt(c.down.get())}", open))
             }
         }
         rowAdapter.notifyDataSetChanged()
