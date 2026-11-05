@@ -61,6 +61,7 @@ class HotspotService : Service() {
     @SuppressLint("MissingPermission", "WakelockTimeout")
     private fun startAll() {
         running = true
+        DailyUsage.start(this)
         startForeground(1, notification("Iniciando..."), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
 
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -141,6 +142,7 @@ class HotspotService : Service() {
     private fun shutdown() {
         if (!running) return
         running = false
+        DailyUsage.stop(this)
         try { proxy?.stop() } catch (_: Exception) {}
         proxy = null
         val ch = channel
