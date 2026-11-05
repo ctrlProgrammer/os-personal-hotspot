@@ -149,13 +149,13 @@ class ConnLogActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
         fun btn(t: String, f: (Button) -> Unit) = Button(this).apply {
-            text = t; styleSmall(); setOnClickListener { f(this) }
+            text = t; styleSmall(); maxLines = 1; setSingleLine(true); setOnClickListener { f(this) }
         }
         val bar = LinearLayout(this)
         fun lp(first: Boolean = false) = LinearLayout.LayoutParams(0, -2, 1f).apply { if (!first) leftMargin = dp(8) }
-        bar.addView(btn("Top dominios") { b ->
+        bar.addView(btn("Top") { b ->
             grouped = !grouped
-            b.text = if (grouped) "Ver registro" else "Top dominios"
+            b.text = if (grouped) "Lista" else "Top"
             refresh()
         }, lp(true))
         bar.addView(btn("CSV") { exportCsv() }, lp())

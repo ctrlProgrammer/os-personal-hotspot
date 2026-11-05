@@ -129,7 +129,7 @@ fun LinearLayout.text(s: String, sizeSp: Float = 15f, color: Int = Ui.TEXT, bold
 /** Fila etiqueta (gris) + valor (blanco). Devuelve el TextView del valor para actualizarlo. */
 fun LinearLayout.kv(label: String, value: String): TextView {
     val c = context
-    val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 4)) }
+    val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 4)) }
     row.addView(TextView(c).apply { text = label; textSize = 14f; setTextColor(Ui.MUTED) }, LinearLayout.LayoutParams(0, -2, 1f))
     val v = TextView(c).apply { text = value; textSize = 14f; setTextColor(Ui.TEXT); gravity = Gravity.END }
     row.addView(v, LinearLayout.LayoutParams(0, -2, 1.4f))

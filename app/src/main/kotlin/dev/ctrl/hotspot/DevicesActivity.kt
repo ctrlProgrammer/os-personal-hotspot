@@ -85,7 +85,7 @@ class DevicesActivity : Activity() {
         val totalUp = agg.values.sumOf { it[0] }
         val totalDown = agg.values.sumOf { it[1] }
         list.card {
-            text("${rows.size} dispositivos  ·  total ↑ ${Ui.fmtBytes(totalUp)}  ↓ ${Ui.fmtBytes(totalDown)}", 15f, Ui.TEXT, bold = true)
+            text("${rows.size} ${if (rows.size == 1) "dispositivo" else "dispositivos"}  ·  total ↑ ${Ui.fmtBytes(totalUp)}  ↓ ${Ui.fmtBytes(totalDown)}", 15f, Ui.TEXT, bold = true)
         }
         if (rows.isEmpty()) {
             list.card {
