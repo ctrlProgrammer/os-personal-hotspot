@@ -16,7 +16,7 @@
     <application
         android:label="OS Hotspot"
         android:allowBackup="false"
-        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

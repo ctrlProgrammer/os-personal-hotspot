@@ -2,60 +2,101 @@ package dev.ctrl.hotspot
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 
 class MainActivity : Activity() {
-    private lateinit var info: TextView
-    private lateinit var btn: Button
+    private lateinit var stateText: TextView
+    private lateinit var detailText: TextView
+    private lateinit var dot: TextView
+    private lateinit var toggle: android.widget.Button
+    private lateinit var upDown: TextView
+
+    private val ticker = object : Runnable {
+        override fun run() { render(); stateText.postDelayed(this, 1000) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val pad = (24 * resources.displayMetrics.density).toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(pad, pad, pad, pad)
-            setOnApplyWindowInsetsListener { v, w ->
-                @Suppress("DEPRECATION")
-                v.setPadding(pad, w.systemWindowInsetTop + pad, pad, w.systemWindowInsetBottom + pad)
-                w
+        val body = buildScreen("OS Hotspot", back = false)
+        val d = { v: Int -> Ui.dp(this, v) }
+
+        body.card {
+            val row = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+            dot = TextView(context).apply { text = "●"; textSize = 20f }
+            stateText = TextView(context).apply { textSize = 20f; setTextColor(Ui.TEXT); typeface = android.graphics.Typeface.DEFAULT_BOLD; setPadding(d(10), 0, 0, 0) }
+            row.addView(dot); row.addView(stateText)
+            addView(row)
+            upDown = text("", 13f, Ui.MUTED).also { it.setPadding(0, d(6), 0, 0) }
+            toggle = button("Encender", primary = true) { onToggle() }
+        }
+
+        body.card {
+            text("CONEXION", 12f, Ui.MUTED, bold = true)
+            detailText = text("", 14f, Ui.TEXT, mono = true).also { it.setPadding(0, d(8), 0, d(8)) }
+            button("Copiar datos") {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("hotspot", detailText.text))
+                Toast.makeText(this@MainActivity, "Copiado", Toast.LENGTH_SHORT).show()
             }
         }
-        info = TextView(this).apply { textSize = 18f; setPadding(0, 0, 0, pad) }
-        btn = Button(this).apply { setOnClickListener { toggle() } }
-        root.addView(info)
-        root.addView(btn)
-        for ((label, cls) in listOf(
-            "Trafico en vivo" to TrafficActivity::class.java,
-            "Dispositivos" to DevicesActivity::class.java,
-            "Registro de conexiones" to ConnLogActivity::class.java,
-            "Herramientas de red" to NetToolsActivity::class.java,
-            "Reglas y SOCKS5" to RulesActivity::class.java,
-        )) root.addView(Button(this).apply { text = label; setOnClickListener { startActivity(Intent(this@MainActivity, cls)) } })
-        setContentView(root)
+
+        body.sectionTitle("Herramientas")
+        val tiles = listOf(
+            "📈\nTrafico" to TrafficActivity::class.java,
+            "📱\nDispositivos" to DevicesActivity::class.java,
+            "🧾\nConexiones" to ConnLogActivity::class.java,
+            "🛠\nHerramientas" to NetToolsActivity::class.java,
+            "🛡\nReglas y SOCKS5" to RulesActivity::class.java,
+        )
+        tiles.chunked(2).forEach { pair ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair.forEach { (label, cls) ->
+                row.addView(TextView(this).apply {
+                    text = label; textSize = 15f; setTextColor(Ui.TEXT); gravity = Gravity.CENTER
+                    background = Ui.ripple(context, Ui.SURFACE); setPadding(d(8), d(22), d(8), d(22))
+                    setOnClickListener { startActivity(Intent(this@MainActivity, cls)) }
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(d(4), d(4), d(4), d(4)) })
+            }
+            if (pair.size == 1) row.addView(android.view.View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            body.addView(row)
+        }
     }
 
     override fun onResume() {
         super.onResume()
         HotspotService.listener = { runOnUiThread { render() } }
-        render()
+        stateText.post(ticker)
     }
 
-    override fun onPause() { HotspotService.listener = null; super.onPause() }
+    override fun onPause() {
+        HotspotService.listener = null
+        stateText.removeCallbacks(ticker)
+        super.onPause()
+    }
 
     private fun render() {
-        info.text = HotspotService.status
-        btn.text = if (HotspotService.running) "Apagar" else "Encender"
+        val st = HotspotService.status
+        val lines = st.split("\n")
+        val running = HotspotService.running
+        val active = st.startsWith("Activo")
+        stateText.text = lines.firstOrNull() ?: ""
+        dot.setTextColor(when { active -> Ui.GREEN; running -> Ui.AMBER; else -> Ui.MUTED })
+        detailText.text = if (lines.size > 1) lines.drop(1).joinToString("\n") else "Sin conexion activa"
+        toggle.text = if (running) "Apagar" else "Encender"
+        upDown.text = if (running) "↑ ${Ui.fmtBytes(StatsStore.totalUp.get())}   ↓ ${Ui.fmtBytes(StatsStore.totalDown.get())}   ·   ${StatsStore.active.size} conexiones" else ""
     }
 
-    private fun toggle() {
+    private fun onToggle() {
         if (HotspotService.running) {
             startService(Intent(this, HotspotService::class.java).setAction(HotspotService.ACTION_STOP))
             return
@@ -74,7 +115,7 @@ class MainActivity : Activity() {
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
-        if (res.all { it == PackageManager.PERMISSION_GRANTED }) toggle()
+        if (res.all { it == PackageManager.PERMISSION_GRANTED }) onToggle()
         else HotspotService.update("Faltan permisos (Wi-Fi cercano / notificaciones)")
     }
 }
