@@ -8,10 +8,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Typeface
 import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 
@@ -31,8 +31,7 @@ class DevicesActivity : Activity() {
         super.onCreate(savedInstanceState)
         title = "Dispositivos"
         Blocklist.init(this)
-        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 32, 32, 32) }
-        setContentView(ScrollView(this).apply { addView(list) })
+        list = buildScreen("Dispositivos")
         manager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         channel = manager?.initialize(this, Looper.getMainLooper(), null)
     }
@@ -83,28 +82,59 @@ class DevicesActivity : Activity() {
         for (ip in arp.values + agg.keys + Blocklist.all()) if (ip != "?" && known.add(ip)) rows.add(Row(ip, null, null, null))
 
         list.removeAllViews()
-        if (rows.isEmpty()) list.addView(TextView(this).apply { text = "Sin dispositivos conectados" })
+        val totalUp = agg.values.sumOf { it[0] }
+        val totalDown = agg.values.sumOf { it[1] }
+        list.card {
+            text("${rows.size} dispositivos  ·  total ↑ ${Ui.fmtBytes(totalUp)}  ↓ ${Ui.fmtBytes(totalDown)}", 15f, Ui.TEXT, bold = true)
+        }
+        if (rows.isEmpty()) {
+            list.card {
+                text("Ningun dispositivo conectado", 16f, Ui.TEXT, bold = true)
+                text("Conecta uno a la red DIRECT-OS-Hotspot", 14f, Ui.MUTED).setPadding(0, Ui.dp(context, 6), 0, 0)
+            }
+            return
+        }
         for (r in rows) {
             val ip = r.ip
             val blocked = ip != null && Blocklist.isBlocked(ip)
             val a = ip?.let { agg[it] }
-            val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 16, 0, 16) }
-            box.addView(TextView(this).apply {
-                textSize = 16f
-                text = (r.name ?: "Dispositivo") + "  " + (ip ?: "IP desconocida") + if (blocked) "  [BLOQUEADO]" else ""
-            })
-            box.addView(TextView(this).apply {
-                text = "MAC: ${r.mac ?: "?"}  Estado: ${r.status ?: "?"}\n" +
-                    "Subido: ${fmt(a?.get(0) ?: 0)}  Bajado: ${fmt(a?.get(1) ?: 0)}  Conexiones: ${a?.get(2) ?: 0}"
-            })
-            val btns = LinearLayout(this).apply { gravity = Gravity.START }
-            if (ip != null) btns.addView(Button(this).apply {
-                text = if (blocked) "Desbloquear" else "Expulsar"
-                setOnClickListener { if (blocked) Blocklist.unblock(ip) else kick(ip, r.mac); render() }
-            })
-            box.addView(btns)
-            list.addView(box)
+            list.card {
+                val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                val names = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+                names.text(r.name ?: "Dispositivo", 18f, Ui.TEXT, bold = true)
+                names.text(ip ?: "IP desconocida", 14f, Ui.TEXT, mono = true)
+                names.text(r.mac ?: "MAC desconocida", 12f, Ui.MUTED, mono = true)
+                head.addView(names, LinearLayout.LayoutParams(0, -2, 1f))
+                val chip = when {
+                    blocked -> chip("Bloqueado", Ui.RED)
+                    r.status == null || r.status == "conectado" -> chip("Conectado", Ui.GREEN)
+                    else -> chip(r.status.replaceFirstChar { it.uppercase() }, Ui.AMBER)
+                }
+                head.addView(chip)
+                addView(head)
+                text("↑ ${Ui.fmtBytes(a?.get(0) ?: 0)}   ↓ ${Ui.fmtBytes(a?.get(1) ?: 0)}   ·   ${a?.get(2) ?: 0} conexiones", 13f, Ui.MUTED)
+                    .setPadding(0, Ui.dp(context, 10), 0, 0)
+                if (ip != null) {
+                    val btns = LinearLayout(context).apply { gravity = Gravity.END }
+                    btns.addView(Button(context).apply {
+                        text = if (blocked) "Desbloquear" else "Expulsar"
+                        styleSmall()
+                        if (!blocked) {
+                            setTextColor(0xFF0E1116.toInt())
+                            background = Ui.ripple(context, Ui.RED, 10)
+                        }
+                        setOnClickListener { if (blocked) Blocklist.unblock(ip) else kick(ip, r.mac); render() }
+                    })
+                    addView(btns, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(context, 8) })
+                }
+            }
         }
+    }
+
+    private fun chip(label: String, color: Int) = TextView(this).apply {
+        text = label; textSize = 12f; setTextColor(color); typeface = Typeface.DEFAULT_BOLD
+        background = Ui.rounded(context, (color and 0x00FFFFFF) or 0x33000000, 20)
+        setPadding(Ui.dp(context, 10), Ui.dp(context, 4), Ui.dp(context, 10), Ui.dp(context, 4))
     }
 
     private fun kick(ip: String, mac: String?) {
@@ -114,12 +144,5 @@ class DevicesActivity : Activity() {
                 manager?.removeClient(channel!!, android.net.MacAddress.fromString(mac), null)
             } catch (_: Exception) {}
         }
-    }
-
-    private fun fmt(b: Long): String = when {
-        b >= 1L shl 30 -> "%.2f GB".format(b / 1073741824.0)
-        b >= 1L shl 20 -> "%.1f MB".format(b / 1048576.0)
-        b >= 1L shl 10 -> "%.0f KB".format(b / 1024.0)
-        else -> "$b B"
     }
 }
