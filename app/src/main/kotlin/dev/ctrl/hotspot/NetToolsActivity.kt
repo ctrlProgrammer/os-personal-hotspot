@@ -11,7 +11,8 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
 import android.telephony.TelephonyManager
-import android.view.ViewGroup
+import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -30,7 +31,6 @@ class NetToolsActivity : Activity() {
     private lateinit var out: TextView
     private lateinit var scroll: ScrollView
     private lateinit var domain: EditText
-    private lateinit var stopBtn: Button
 
     @Volatile private var cellular: Network? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
@@ -40,44 +40,101 @@ class NetToolsActivity : Activity() {
 
     private val net: Network? get() = cellular ?: cm.activeNetwork
 
+    private val tools = listOf("Ping", "DNS", "Traceroute", "Speedtest", "IP publica")
+    private var selected = 0
+    private val chips = ArrayList<Button>()
+    private lateinit var runBtn: Button
+    private lateinit var inputCard: LinearLayout
+    private lateinit var status: TextView
+    @Volatile private var running = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Herramientas de red"
         cm = getSystemService(ConnectivityManager::class.java)
         requestCellular()
+        val d = { v: Int -> Ui.dp(this, v) }
 
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 24, 24, 24) }
-        domain = EditText(this).apply { setText("google.com"); hint = "dominio"; setSingleLine() }
-        root.addView(domain)
+        val body = buildScreen("Herramientas de red", scroll = false)
 
-        val row = LinearLayout(this)
-        fun btn(label: String, onClick: () -> Unit) = Button(this).apply {
-            text = label; isAllCaps = false; setOnClickListener { onClick() }
+        val chipRow = LinearLayout(this)
+        tools.forEachIndexed { i, label ->
+            val chip = Button(this).apply {
+                text = label; styleSmall(); setOnClickListener { select(i) }
+            }
+            chips += chip
+            chipRow.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(8) })
         }
-        row.addView(btn("Ping") { run("Ping TCP:443") { ping() } })
-        row.addView(btn("DNS") { run("DNS") { dns() } })
-        row.addView(btn("Traceroute") { run("Traceroute") { traceroute() } })
-        row.addView(btn("Speedtest") { confirmSpeedtest() })
-        row.addView(btn("IP publica") { run("IP publica") { publicIp() } })
-        root.addView(HorizontalScrollView(this).apply { addView(row) })
+        body.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chipRow)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(12) })
 
-        val row2 = LinearLayout(this)
-        stopBtn = btn("Cancelar") { cancel() }.apply { isEnabled = false }
-        row2.addView(stopBtn)
-        row2.addView(btn("Copiar resultado") {
-            getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("net-tools", out.text))
-            Toast.makeText(this, "Copiado", Toast.LENGTH_SHORT).show()
-        })
-        row2.addView(btn("Limpiar") { out.text = "" })
-        root.addView(row2)
+        inputCard = body.card {
+            sectionTitle("Dominio")
+            domain = EditText(context).apply { setText("google.com"); hint = "dominio"; setSingleLine(); styleInput() }
+            addView(domain, LinearLayout.LayoutParams(-1, -2))
+        }
+        val actions = body.card {
+            runBtn = button("Ejecutar", primary = true) { if (running) cancel() else startSelected() }
+        }
+        actions.setPadding(d(16), d(8), d(16), d(14))
+        status = actions.text("", 12f, Ui.MUTED).also { it.setPadding(0, d(8), 0, 0) }
 
+        val results = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(this@NetToolsActivity, 0xFF07090C.toInt())
+            setPadding(d(14), d(12), d(14), d(12))
+        }
         out = TextView(this).apply {
-            typeface = Typeface.MONOSPACE; textSize = 12f; setTextIsSelectable(true)
+            typeface = Typeface.MONOSPACE; textSize = 13f; setTextColor(Ui.TEXT); setTextIsSelectable(true)
         }
-        scroll = ScrollView(this).apply { addView(out) }
-        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
+        scroll = ScrollView(this).apply { isFillViewport = true; addView(out) }
+        results.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        val bar = LinearLayout(this).apply { gravity = Gravity.END; setPadding(0, d(10), 0, 0) }
+        bar.addView(Button(this).apply {
+            text = "Copiar"; styleSmall()
+            setOnClickListener {
+                getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("net-tools", out.text))
+                Toast.makeText(context, "Copiado", Toast.LENGTH_SHORT).show()
+            }
+        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = d(8) })
+        bar.addView(Button(this).apply { text = "Limpiar"; styleSmall(); setOnClickListener { out.text = "" } })
+        results.addView(bar, LinearLayout.LayoutParams(-1, -2))
+        body.addView(results, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        select(0)
+        refreshStatus()
+    }
+
+    private fun select(i: Int) {
+        selected = i
+        chips.forEachIndexed { k, b ->
+            b.styleSmall(primary = k == i)
+        }
+        inputCard.visibility = if (i == 1 || i == 2) View.VISIBLE else View.GONE
+    }
+
+    private fun refreshStatus() = runOnUiThread {
+        status.text = if (cellular != null) "Usando red movil" else "Red por defecto"
+    }
+
+    private fun setRunning(on: Boolean) {
+        running = on
+        runBtn.text = if (on) "Cancelar" else "Ejecutar"
+        runBtn.background = Ui.ripple(this, if (on) Ui.RED else Ui.ACCENT, 12)
+    }
+
+    private fun startSelected() {
+        when (selected) {
+            0 -> run("Ping TCP:443") { ping() }
+            1 -> run("DNS") { dns() }
+            2 -> run("Traceroute") { traceroute() }
+            3 -> confirmSpeedtest()
+            else -> run("IP publica") { publicIp() }
+        }
     }
 
     private fun requestCellular() {
@@ -85,8 +142,8 @@ class NetToolsActivity : Activity() {
             .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { cellular = network }
-            override fun onLost(network: Network) { if (cellular == network) cellular = null }
+            override fun onAvailable(network: Network) { cellular = network; refreshStatus() }
+            override fun onLost(network: Network) { if (cellular == network) cellular = null; refreshStatus() }
         }
         callback = cb
         try { cm.requestNetwork(req, cb) } catch (e: Exception) { callback = null }
@@ -121,7 +178,7 @@ class NetToolsActivity : Activity() {
     private fun run(name: String, body: () -> Unit) {
         if (worker?.isAlive == true) { Toast.makeText(this, "Hay una prueba en curso", Toast.LENGTH_SHORT).show(); return }
         cancelled = false
-        stopBtn.isEnabled = true
+        setRunning(true)
         val n = net
         log("== $name == (${if (cellular != null) "red movil" else if (n != null) "red por defecto (sin red movil)" else "SIN RED"})")
         worker = Thread {
@@ -129,7 +186,7 @@ class NetToolsActivity : Activity() {
             catch (e: Exception) { if (!cancelled) log("Error: ${e.javaClass.simpleName}: ${e.message}") }
             if (cancelled) log("(cancelado)")
             log("")
-            runOnUiThread { stopBtn.isEnabled = false }
+            runOnUiThread { setRunning(false) }
         }.also { it.isDaemon = true; it.start() }
     }
 
