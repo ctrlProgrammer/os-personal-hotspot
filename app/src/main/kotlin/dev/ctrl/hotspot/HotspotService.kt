@@ -39,6 +39,7 @@ class HotspotService : Service() {
     }
 
     private var proxy: ProxyServer? = null
+    private var socks: Socks5Server? = null
     private var p2p: WifiP2pManager? = null
     private var channel: WifiP2pManager.Channel? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -84,6 +85,8 @@ class HotspotService : Service() {
 
         try {
             proxy = ProxyServer(PROXY_PORT) { cellular }.also { it.start() }
+            Rules.init(this)
+            socks = Socks5Server(1080) { cellular }.also { it.start() }
         } catch (e: Exception) {
             fail("No se pudo abrir el puerto $PROXY_PORT: ${e.message}"); return
         }
@@ -107,11 +110,11 @@ class HotspotService : Service() {
             override fun onSuccess() {
                 if (stage < 2) {
                     val band = if (stage == 0) "5 GHz" else "auto"
-                    update("Activo ($band)\nRed: $SSID\nClave: $passphrase\nProxy: 192.168.49.1:$PROXY_PORT")
+                    update("Activo ($band)\nRed: $SSID\nClave: $passphrase\nProxy: 192.168.49.1:$PROXY_PORT\nSOCKS5: 192.168.49.1:1080")
                     notify("Activo - 192.168.49.1:$PROXY_PORT")
                 } else {
                     mgr.requestGroupInfo(ch) { g ->
-                        update("Activo (grupo por defecto)\nRed: ${g?.networkName}\nClave: ${g?.passphrase}\nProxy: 192.168.49.1:$PROXY_PORT")
+                        update("Activo (grupo por defecto)\nRed: ${g?.networkName}\nClave: ${g?.passphrase}\nProxy: 192.168.49.1:$PROXY_PORT\nSOCKS5: 192.168.49.1:1080")
                         notify("Activo - 192.168.49.1:$PROXY_PORT")
                     }
                 }
@@ -143,6 +146,8 @@ class HotspotService : Service() {
         running = false
         try { proxy?.stop() } catch (_: Exception) {}
         proxy = null
+        try { socks?.stop() } catch (_: Exception) {}
+        socks = null
         val ch = channel
         if (ch != null) try { p2p?.removeGroup(ch, null) } catch (_: Exception) {}
         channel = null

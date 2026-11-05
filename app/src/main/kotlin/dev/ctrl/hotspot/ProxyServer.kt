@@ -64,6 +64,7 @@ class ProxyServer(
             if (method.equals("CONNECT", true)) {
                 val (host, p) = splitHostPort(target, 443)
                 conn = StatsStore.open(client.inetAddress?.hostAddress ?: "?", host, p)
+                if (!Rules.check(host)) return
                 upstream = connect(host, p)
                 cout.write("HTTP/1.1 200 Connection established\r\n\r\n".toByteArray())
                 cout.flush()
@@ -72,6 +73,7 @@ class ProxyServer(
                 val host = url.host ?: return
                 val p = if (url.port > 0) url.port else 80
                 conn = StatsStore.open(client.inetAddress?.hostAddress ?: "?", host, p)
+                if (!Rules.check(host)) return
                 upstream = connect(host, p)
                 val path = (url.rawPath.ifEmpty { "/" }) + (url.rawQuery?.let { "?$it" } ?: "")
                 val sb = StringBuilder("$method $path ${parts[2]}\r\n")

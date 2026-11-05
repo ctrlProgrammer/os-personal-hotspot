@@ -37,6 +37,7 @@ class MainActivity : Activity() {
             "Dispositivos" to DevicesActivity::class.java,
             "Registro de conexiones" to ConnLogActivity::class.java,
             "Herramientas de red" to NetToolsActivity::class.java,
+            "Reglas y SOCKS5" to RulesActivity::class.java,
         )) root.addView(Button(this).apply { text = label; setOnClickListener { startActivity(Intent(this@MainActivity, cls)) } })
         setContentView(root)
     }
