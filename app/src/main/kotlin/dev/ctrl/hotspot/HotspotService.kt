@@ -95,32 +95,46 @@ class HotspotService : Service() {
         channel = ch
         // limpiar cualquier grupo previo y crear el nuestro (primero 5 GHz, si falla banda automatica)
         mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() = create(mgr, ch, true)
-            override fun onFailure(reason: Int) = create(mgr, ch, true)
+            override fun onSuccess() = create(mgr, ch, 0)
+            override fun onFailure(reason: Int) = create(mgr, ch, 0)
         })
     }
 
+    // stage 0: 5 GHz + nombre/clave propios; 1: banda auto; 2: grupo por defecto del sistema
     @SuppressLint("MissingPermission")
-    private fun create(mgr: WifiP2pManager, ch: WifiP2pManager.Channel, fiveGhz: Boolean) {
+    private fun create(mgr: WifiP2pManager, ch: WifiP2pManager.Channel, stage: Int) {
+        val listener = object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                if (stage < 2) {
+                    val band = if (stage == 0) "5 GHz" else "auto"
+                    update("Activo ($band)\nRed: $SSID\nClave: $passphrase\nProxy: 192.168.49.1:$PROXY_PORT")
+                    notify("Activo - 192.168.49.1:$PROXY_PORT")
+                } else {
+                    mgr.requestGroupInfo(ch) { g ->
+                        update("Activo (grupo por defecto)\nRed: ${g?.networkName}\nClave: ${g?.passphrase}\nProxy: 192.168.49.1:$PROXY_PORT")
+                        notify("Activo - 192.168.49.1:$PROXY_PORT")
+                    }
+                }
+            }
+            override fun onFailure(reason: Int) {
+                android.util.Log.w("OSHotspot", "createGroup stage=$stage failed reason=$reason")
+                if (stage < 2 && reason != WifiP2pManager.BUSY) create(mgr, ch, stage + 1)
+                else fail(
+                    if (reason == WifiP2pManager.BUSY) "Hay otro grupo Wi-Fi Direct activo.\nCierra NetShare (u otro hotspot) y reintenta."
+                    else "Wi-Fi Direct fallo en todos los intentos (codigo $reason)."
+                )
+            }
+        }
+        if (stage == 2) { mgr.createGroup(ch, listener); return }
         val cfg = WifiP2pConfig.Builder()
             .setNetworkName(SSID)
             .setPassphrase(passphrase)
             .enablePersistentMode(false)
             .setGroupOperatingBand(
-                if (fiveGhz) WifiP2pConfig.GROUP_OWNER_BAND_5GHZ else WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+                if (stage == 0) WifiP2pConfig.GROUP_OWNER_BAND_5GHZ else WifiP2pConfig.GROUP_OWNER_BAND_AUTO
             )
             .build()
-        mgr.createGroup(ch, cfg, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                val band = if (fiveGhz) "5 GHz" else "auto"
-                update("Activo ($band)\nRed: $SSID\nClave: $passphrase\nProxy: 192.168.49.1:$PROXY_PORT")
-                notify("Activo - 192.168.49.1:$PROXY_PORT")
-            }
-            override fun onFailure(reason: Int) {
-                if (fiveGhz) create(mgr, ch, false)
-                else fail("Wi-Fi Direct fallo (codigo $reason). Activa el Wi-Fi y permisos.")
-            }
-        })
+        mgr.createGroup(ch, cfg, listener)
     }
 
     @SuppressLint("MissingPermission")

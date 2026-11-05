@@ -21,7 +21,12 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(pad, pad * 3, pad, pad)
+            setPadding(pad, pad, pad, pad)
+            setOnApplyWindowInsetsListener { v, w ->
+                @Suppress("DEPRECATION")
+                v.setPadding(pad, w.systemWindowInsetTop + pad, pad, w.systemWindowInsetBottom + pad)
+                w
+            }
         }
         info = TextView(this).apply { textSize = 18f; setPadding(0, 0, 0, pad) }
         btn = Button(this).apply { setOnClickListener { toggle() } }
