@@ -123,4 +123,4 @@ app/src/main/kotlin/dev/ctrl/hotspot/
 
 ## Licencia
 
-Sin licencia por ahora: todos los derechos reservados.
+[MIT](LICENSE) © 2026 ctrlProgrammer
