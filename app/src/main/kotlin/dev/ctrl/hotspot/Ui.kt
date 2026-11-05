@@ -85,6 +85,12 @@ fun Activity.buildScreen(titleText: String, back: Boolean = true, scroll: Boolea
         root.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     }
     setContentView(root)
+    // iconos de la barra de estado/navegacion en claro (fondo oscuro); debe ir DESPUES de setContentView
+    window.insetsController?.setSystemBarsAppearance(
+        0,
+        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+    )
     root.requestApplyInsets()
     return body
 }
