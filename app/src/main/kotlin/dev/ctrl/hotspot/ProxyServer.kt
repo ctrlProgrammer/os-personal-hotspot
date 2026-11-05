@@ -45,6 +45,7 @@ class ProxyServer(
     }
 
     private fun handle(client: Socket) {
+        if (Blocklist.isBlocked(client.inetAddress?.hostAddress)) { client.close(); return }
         var upstream: Socket? = null
         var conn: StatsStore.Conn? = null
         try {
