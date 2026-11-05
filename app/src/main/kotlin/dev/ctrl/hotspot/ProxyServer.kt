@@ -21,8 +21,6 @@ class ProxyServer(
 ) {
     private var server: ServerSocket? = null
     private val pool = Executors.newCachedThreadPool()
-    val bytesDown = AtomicLong()
-    val bytesUp = AtomicLong()
 
     fun start() {
         val s = ServerSocket()
@@ -48,6 +46,7 @@ class ProxyServer(
 
     private fun handle(client: Socket) {
         var upstream: Socket? = null
+        var conn: StatsStore.Conn? = null
         try {
             client.soTimeout = 30_000
             client.tcpNoDelay = true
@@ -64,6 +63,7 @@ class ProxyServer(
 
             if (method.equals("CONNECT", true)) {
                 val (host, p) = splitHostPort(target, 443)
+                conn = StatsStore.open(client.inetAddress?.hostAddress ?: "?", host, p)
                 upstream = connect(host, p)
                 cout.write("HTTP/1.1 200 Connection established\r\n\r\n".toByteArray())
                 cout.flush()
@@ -71,6 +71,7 @@ class ProxyServer(
                 val url = java.net.URI(target)
                 val host = url.host ?: return
                 val p = if (url.port > 0) url.port else 80
+                conn = StatsStore.open(client.inetAddress?.hostAddress ?: "?", host, p)
                 upstream = connect(host, p)
                 val path = (url.rawPath.ifEmpty { "/" }) + (url.rawQuery?.let { "?$it" } ?: "")
                 val sb = StringBuilder("$method $path ${parts[2]}\r\n")
@@ -83,11 +84,12 @@ class ProxyServer(
                 sb.append("Connection: close\r\n\r\n")
                 upstream.getOutputStream().write(sb.toString().toByteArray(Charsets.ISO_8859_1))
             }
-            pipe(client, upstream)
+            pipe(client, upstream, conn)
         } catch (_: Exception) {
         } finally {
             try { client.close() } catch (_: Exception) {}
             try { upstream?.close() } catch (_: Exception) {}
+            conn?.let { StatsStore.close(it) }
         }
     }
 
@@ -132,9 +134,9 @@ class ProxyServer(
         throw last ?: java.io.IOException("no address for $host")
     }
 
-    private fun pipe(a: Socket, b: Socket) {
+    private fun pipe(a: Socket, b: Socket, conn: StatsStore.Conn) {
         val done = CountDownLatch(2)
-        fun copy(from: Socket, to: Socket, counter: AtomicLong) = pool.execute {
+        fun copy(from: Socket, to: Socket, upDir: Boolean) = pool.execute {
             try {
                 val i = from.getInputStream()
                 val o: OutputStream = to.getOutputStream()
@@ -143,7 +145,8 @@ class ProxyServer(
                     val n = i.read(buf)
                     if (n < 0) break
                     o.write(buf, 0, n)
-                    counter.addAndGet(n.toLong())
+                    if (upDir) { StatsStore.totalUp.addAndGet(n.toLong()); conn.up.addAndGet(n.toLong()) }
+                    else { StatsStore.totalDown.addAndGet(n.toLong()); conn.down.addAndGet(n.toLong()) }
                 }
                 try { to.shutdownOutput() } catch (_: Exception) {}
             } catch (_: Exception) {
@@ -153,8 +156,8 @@ class ProxyServer(
                 done.countDown()
             }
         }
-        copy(a, b, bytesUp)
-        copy(b, a, bytesDown)
+        copy(a, b, true)
+        copy(b, a, false)
         done.await()
     }
 }

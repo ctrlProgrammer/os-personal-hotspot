@@ -32,6 +32,12 @@ class MainActivity : Activity() {
         btn = Button(this).apply { setOnClickListener { toggle() } }
         root.addView(info)
         root.addView(btn)
+        for ((label, cls) in listOf(
+            "Trafico en vivo" to TrafficActivity::class.java,
+            "Dispositivos" to DevicesActivity::class.java,
+            "Registro de conexiones" to ConnLogActivity::class.java,
+            "Herramientas de red" to NetToolsActivity::class.java,
+        )) root.addView(Button(this).apply { text = label; setOnClickListener { startActivity(Intent(this@MainActivity, cls)) } })
         setContentView(root)
     }
 

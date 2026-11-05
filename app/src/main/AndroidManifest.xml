@@ -25,6 +25,11 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".TrafficActivity" android:exported="false" />
+        <activity android:name=".DevicesActivity" android:exported="false" />
+        <activity android:name=".ConnLogActivity" android:exported="false" />
+        <activity android:name=".NetToolsActivity" android:exported="false" />
+
         <service
             android:name=".HotspotService"
             android:exported="false"
